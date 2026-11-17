@@ -1,0 +1,12 @@
+# executável e cópia gerada pelo empacotador
+dist/
+tools/app/
+# backups locais e arquivos temporários
+*.pre-*
+*.bak
+*.log
+node_modules/
+.DS_Store
+Thumbs.db
+# imagens privadas usadas só localmente
+BANDEIRAS BONGAS/

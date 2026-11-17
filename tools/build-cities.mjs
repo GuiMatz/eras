@@ -1,0 +1,18 @@
+// Gera data/cities.js com nome e nivel das cidades listadas no Age of History II instalado.
+// As coordenadas do jogo sao calibradas para longitude/latitude usando cidades que tambem existem no Natural Earth.
+import fs from 'fs'; import path from 'path';
+const DL = path.resolve(process.argv[2]), G = path.resolve(import.meta.dirname, '..'), D = String.raw`C:\Program Files (x86)\Steam\steamapps\common\AoCII\map\Earth\cities`;
+const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+const all = [], seen = new Set(); ['cities.json', 'cities_1.json', 'cities_2.json', 'cities_3.json', 'cities_4.json'].forEach((f, t) => { const s = fs.readFileSync(path.join(D, f), 'utf8'); for (const m of s.matchAll(/Name:\s*"([^"]+)"\s*,\s*x:\s*(-?\d+)\s*,\s*y:\s*(-?\d+)/g)) { const k = norm(m[1]) + Math.round(+m[2] / 25) + '_' + Math.round(+m[3] / 25); if (seen.has(k)) continue; seen.add(k); all.push({ n: m[1], x: +m[2], y: +m[3], t }); } });
+const popOf = new Map(); const ne = new Map(); for (const f of JSON.parse(fs.readFileSync(path.join(DL, 'places.geojson'), 'utf8')).features) { const k = norm(f.properties.name), p = f.properties.pop_max || 0; popOf.set(k, Math.max(popOf.get(k) || 0, p)); if (p < 150000) continue; const c = ne.get(k); if (c === undefined) ne.set(k, { lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], p }); else ne.set(k, null); }
+let pts = all.map(c => { const a = ne.get(norm(c.n)); return a ? { x: c.x, y: c.y, lon: a.lon, lat: a.lat } : null; }).filter(Boolean);
+const xM = Math.max(...all.map(c => c.x)), yM = Math.max(...all.map(c => c.y));
+function fit(data, deg, X, Y) { const n = deg + 1, A = Array.from({ length: n }, () => new Array(n + 1).fill(0)); for (const p of data) { const v = X(p), b = []; for (let i = 0; i < n; i++) b.push(v ** i); for (let i = 0; i < n; i++) { for (let j = 0; j < n; j++) A[i][j] += b[i] * b[j]; A[i][n] += b[i] * Y(p); } } for (let i = 0; i < n; i++) { let m = i; for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[m][i])) m = r; [A[i], A[m]] = [A[m], A[i]]; for (let r = 0; r < n; r++) if (r !== i) { const f = A[r][i] / A[i][i]; for (let c = i; c <= n; c++) A[r][c] -= f * A[i][c]; } } return A.map((r, i) => r[n] / r[i]); }
+const ev = (c, v) => c.reduce((s, a, i) => s + a * v ** i, 0), nx = p => p.x / xM, ny = p => p.y / yM; let cx, cy;
+for (let pass = 0; pass < 6; pass++) { cx = fit(pts, 1, nx, p => p.lon); cy = fit(pts, 6, ny, p => p.lat); const e = pts.map(p => Math.hypot(ev(cx, nx(p)) - p.lon, ev(cy, ny(p)) - p.lat)).sort((a, b) => a - b), lim = Math.max(1.2, e[Math.floor(e.length * .9)]); pts = pts.filter(p => Math.hypot(ev(cx, nx(p)) - p.lon, ev(cy, ny(p)) - p.lat) <= lim); }
+const err = pts.map(p => Math.hypot(ev(cx, nx(p)) - p.lon, ev(cy, ny(p)) - p.lat)).sort((a, b) => a - b);
+const nice = n => n === 'Sao Salvador' ? 'Salvador' : n.replace(/^Sao /, 'São ');
+const out = all.map(c => [nice(c.n), +ev(cx, nx(c)).toFixed(3), +ev(cy, ny(c)).toFixed(3), c.t, popOf.get(norm(c.n)) || 0]);
+fs.writeFileSync(path.join(G, 'data/cities.js'), 'window.AOH_CITIES=' + JSON.stringify(out));
+const show = n => { const c = out.find(x => x[0] === n); return c ? n + ' ' + c[1] + ',' + c[2] + ' nivel ' + c[3] : n + ' ?'; };
+console.log('cidades', out.length, 'por nivel', [0, 1, 2, 3, 4].map(t => out.filter(c => c[3] === t).length).join('/'), '| ancoras', pts.length, 'erro mediano', err[Math.floor(err.length / 2)].toFixed(2), 'graus, p90', err[Math.floor(err.length * .9)].toFixed(2)); console.log(['Sao Paulo', 'São Paulo', 'Manaus', 'Porto Alegre', 'Recife', 'Brasilia', 'Brasília', 'Tokyo', 'Lima'].map(show).join(' | '));
